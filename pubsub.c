@@ -4,6 +4,8 @@
 #include <time.h>
 #include <dlfcn.h>
 
+#include <pthread.h>
+
 #include "pubsub.h"
 
 // each item will have an amount, place of purchase, and description.
@@ -31,6 +33,7 @@ struct item *tail = NULL;
 // return the current time in milliseconds
 int64_t getnow_ms()
 {
+    printf("Begin getnow_ms\n");
     struct timespec res;
     clock_gettime(CLOCK_REALTIME, &res);
     return res.tv_sec * 1000 + res.tv_nsec / 1000000;
@@ -52,8 +55,10 @@ typedef struct sub_arguments
 // Delegate method to create pub threads
 // @param args - a struct containing the arguments to the pub_init function
 void *
-start_pub_thread(void *args)
+start_pub_thread(pub_struct *args)
 {
+
+    printf("Begin start_pub_thread\n");
     pub_struct *pubargs = args;
 
     pub_init_t function = (pub_init_t)args->init_function;
@@ -63,9 +68,10 @@ start_pub_thread(void *args)
 
 // Delegate method to create sub threads;
 // @param args - a struct containing the arguments to the sub_init function
-void *start_sub_thread(void *args)
+void *start_sub_thread(sub_struct *args)
 {
-    struct sub_struct *subargs = args;
+    printf("Begin start_sub_thread\n");
+    sub_struct *subargs = args;
 
     sub_init_t function = (sub_init_t)args->init_function;
 
@@ -76,6 +82,7 @@ void *start_sub_thread(void *args)
 // because there is no guarantee they will stick around after the function returns.
 void simple_publish(float amount, const char *place, const char *description)
 {
+    printf("Begin simple_publish\n");
     struct item *i = malloc(sizeof(*i));
     i->timestamp_ms = getnow_ms();
     i->amount = amount;
@@ -101,6 +108,7 @@ struct item *current;
 // when all publishers are finished and there is nothing left to return timestamp_ms will be -1
 void simple_retrieve(int64_t *timestamp_ms, float *amount, char *place, char *description)
 {
+    printf("Begin simple_retrieve\n");
     if (current == NULL)
     {
         *timestamp_ms = -1;
@@ -115,6 +123,8 @@ void simple_retrieve(int64_t *timestamp_ms, float *amount, char *place, char *de
 
 int main(int argc, char **argv)
 {
+    printf("START MAIN\n");
+
     if (argc < 2 || (argc % 2) == 0)
     {
         printf("USAGE: %s pub_sub_so1 param1 pub_sub_so2 param2 ...\n", argv[0]);
@@ -123,8 +133,14 @@ int main(int argc, char **argv)
 
     //* starting the pub and sub count to zero,
     //* using this as an index for inserting into our "arrays" below
-    int pub_count = 0;
-    int sub_count = 0;
+    int *pub_count_ptr = malloc(sizeof(int));
+    int *sub_count_ptr = malloc(sizeof(int));
+
+    int pub_count = *pub_count_ptr;
+    int sub_count = *pub_count_ptr;
+
+    pub_count = 0;
+    sub_count = 0;
 
     // we are allocating for the maximum possible, probably every
     // argument will not be both a pub and a sub
@@ -132,6 +148,8 @@ int main(int argc, char **argv)
     sub_init_t *subs = malloc(sizeof(*subs) * (argc / 2));
     char **pubs_arg = malloc(sizeof(*pubs_arg) * (argc / 2));
     char **subs_arg = malloc(sizeof(*subs_arg) * (argc / 2));
+
+    printf("AFTER ARRAYS\n");
 
     // we load in all the libraries specified on the command line. the library may
     // have a publisher, subscriber, or both!
@@ -158,48 +176,64 @@ int main(int argc, char **argv)
         }
     }
 
+    printf("FINISHED POPULATING ARRAYS\n");
+
     // do all the pubs first (this might fail if the pubs are also subs...)
     //* starting up all the pubs and then the subs
     //! inside the for loops, the pub_init and sub_init functions are being called
 
     // ------------ Publisher Threads ----------------
-    pthread_t publishers[pub_count];
+    pthread_t *publishers = malloc(sizeof(*publishers) * pub_count);
 
     for (int i = 0; i < pub_count; i++)
     {
         // Instantiating publisher argument struct
-        pub_struct *arguments;
-        arguments->arg = pubs_arg[i];
-        arguments->publish = simple_publish;
-        arguments->init_function = (void *)pubs[i];
+        pub_struct *pubarguments = malloc(sizeof(pub_struct));
+        pubarguments->arg = pubs_arg[i];
+        pubarguments->publish = simple_publish;
+        pubarguments->init_function = (void *)pubs[i];
 
-        pthread_create(&publishers[i], NULL, start_pub_thread, &arguments);
+        void* start_pub_thread;
+
+        pthread_create(&publishers[i], NULL, start_pub_thread, &pubarguments);
     }
     // ------------------------------------------------
+    printf("FINISHED PUB THREADS\n");
 
     // ------------ Subscriber Threads ----------------
-    pthread_t subscribers[sub_count];
+    pthread_t *subscribers = malloc(sizeof(*subscribers) * sub_count);
 
     for (int i = 0; i < sub_count; i++)
     {
         // Instantiating subscriber argument struct
-        sub_struct *arguments;
-        arguments->arg = subs_arg[i];
-        arguments->retrieve = simple_retrieve;
-        arguments->init_function = (void *)subs[i];
+        sub_struct *subarguments = malloc(sizeof(sub_struct));
+        subarguments->arg = subs_arg[i];
+        subarguments->retrieve = simple_retrieve;
+        subarguments->init_function = (void *)subs[i];
 
-        pthread_create(&subscribers[i], NULL, start_sub_thread, &arguments);
+        void* start_sub_thread;
+
+        pthread_create(&subscribers[i], NULL, start_sub_thread, &subarguments);
     }
     // ------------------------------------------------
+    printf("AFTER INIT THREADS\n");
 
+
+    printf("JUST BEFORE JOINS\n");
     for (int i = 0; i < pub_count; i++)
     {
-        pthread_join(publishers[i], NULL); //! the second parameter is used for a return, may want to use for end condition checking?
+        printf("GOT INTO PUB JOIN\n");
+        // pthread_join(publishers[i], NULL); //! the second parameter is used for a return, may want to use for end condition checking?
     }
     for (int i = 0; i < sub_count; i++)
     {
-        pthread_join(subscribers[i], NULL);
+        printf("GOT INTO SUB JOIN\n");
+        // pthread_join(subscribers[i], NULL);
     }
+
+     printf("AFTER JOIN\n");
+
+
 
     return 0;
 }
