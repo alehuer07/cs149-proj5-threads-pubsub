@@ -54,13 +54,11 @@ typedef struct sub_arguments
 
 // Delegate method to create pub threads
 // @param args - a struct containing the arguments to the pub_init function
-void *
-start_pub_thread(pub_struct *args)
+void *start_pub_thread(pub_struct *args)
 {
-
     printf("Begin start_pub_thread\n");
-    pub_struct *pubargs = args;
 
+    pub_struct *pubargs = args;
     pub_init_t function = (pub_init_t)args->init_function;
 
     function(args->arg, args->publish);
@@ -71,8 +69,8 @@ start_pub_thread(pub_struct *args)
 void *start_sub_thread(sub_struct *args)
 {
     printf("Begin start_sub_thread\n");
-    sub_struct *subargs = args;
 
+    sub_struct *subargs = args;
     sub_init_t function = (sub_init_t)args->init_function;
 
     function(args->arg, args->retrieve);
@@ -193,7 +191,7 @@ int main(int argc, char **argv)
         pubarguments->publish = simple_publish;
         pubarguments->init_function = (void *)pubs[i];
 
-        void* start_pub_thread;
+        // void *start_pub_thread;
 
         pthread_create(&publishers[i], NULL, start_pub_thread, &pubarguments);
     }
@@ -211,13 +209,12 @@ int main(int argc, char **argv)
         subarguments->retrieve = simple_retrieve;
         subarguments->init_function = (void *)subs[i];
 
-        void* start_sub_thread;
+        // void *start_sub_thread;
 
         pthread_create(&subscribers[i], NULL, start_sub_thread, &subarguments);
     }
     // ------------------------------------------------
     printf("AFTER INIT THREADS\n");
-
 
     printf("JUST BEFORE JOINS\n");
     for (int i = 0; i < pub_count; i++)
@@ -231,9 +228,7 @@ int main(int argc, char **argv)
         // pthread_join(subscribers[i], NULL);
     }
 
-     printf("AFTER JOIN\n");
-
-
+    printf("AFTER JOIN\n");
 
     return 0;
 }
