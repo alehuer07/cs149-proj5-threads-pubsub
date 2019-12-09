@@ -9,7 +9,8 @@
 // each item will have an amount, place of purchase, and description.
 // the timestamp will be filled in by the pubsub engine when publish is called.
 // next is used to build a linked list
-struct item {
+struct item
+{
     int64_t timestamp_ms;
     float amount;
     char place[MAX_PLACE_LEN];
@@ -17,12 +18,10 @@ struct item {
     struct item *next;
 };
 
-
 //Todo: Make a global list and store the heads of each subscriber list
 
-
 // this is a simple implementation of a linked list.
-// we don't need to worry about thread safety because this simple implementation 
+// we don't need to worry about thread safety because this simple implementation
 // is single threaded
 struct item *head = NULL;
 // keeping track of the tail simplifies the code a bit and makes the implementation
@@ -30,15 +29,53 @@ struct item *head = NULL;
 struct item *tail = NULL;
 
 // return the current time in milliseconds
-int64_t getnow_ms() {
+int64_t getnow_ms()
+{
     struct timespec res;
     clock_gettime(CLOCK_REALTIME, &res);
     return res.tv_sec * 1000 + res.tv_nsec / 1000000;
 }
+typedef struct pub_arguments
+{
+    char *arg;
+    publish_t publish;
+    void *init_function;
+} pub_struct;
+
+typedef struct sub_arguments
+{
+    char *arg;
+    retrieve_t retrieve;
+    void *init_function;
+} sub_struct;
+
+// Delegate method to create pub threads
+// @param args - a struct containing the arguments to the pub_init function
+void *
+start_pub_thread(void *args)
+{
+    pub_struct *pubargs = args;
+
+    pub_init_t function = (pub_init_t)args->init_function;
+
+    function(args->arg, args->publish);
+}
+
+// Delegate method to create sub threads;
+// @param args - a struct containing the arguments to the sub_init function
+void *start_sub_thread(void *args)
+{
+    struct sub_struct *subargs = args;
+
+    sub_init_t function = (sub_init_t)args->init_function;
+
+    function(args->arg, args->retrieve);
+}
 
 // publish a purchase to all subscribers. we will make a copy of the strings
 // because there is no guarantee they will stick around after the function returns.
-void simple_publish(float amount, const char *place, const char *description) {
+void simple_publish(float amount, const char *place, const char *description)
+{
     struct item *i = malloc(sizeof(*i));
     i->timestamp_ms = getnow_ms();
     i->amount = amount;
@@ -47,9 +84,12 @@ void simple_publish(float amount, const char *place, const char *description) {
 
     // add to end end of the list
     i->next = NULL;
-    if (tail == NULL) {
+    if (tail == NULL)
+    {
         head = tail = i;
-    } else {
+    }
+    else
+    {
         tail->next = i;
         tail = i;
     }
@@ -59,10 +99,12 @@ struct item *current;
 // returns the next element of the list of purchases published. normally this would block
 // if there is nothing to return and a publisher is still running.
 // when all publishers are finished and there is nothing left to return timestamp_ms will be -1
-void simple_retrieve(int64_t *timestamp_ms, float *amount, char *place, char *description) {
-    if (current == NULL) {
+void simple_retrieve(int64_t *timestamp_ms, float *amount, char *place, char *description)
+{
+    if (current == NULL)
+    {
         *timestamp_ms = -1;
-	return;
+        return;
     }
     *timestamp_ms = current->timestamp_ms;
     *amount = current->amount;
@@ -73,41 +115,46 @@ void simple_retrieve(int64_t *timestamp_ms, float *amount, char *place, char *de
 
 int main(int argc, char **argv)
 {
-    if (argc < 2 || (argc % 2) == 0) {
+    if (argc < 2 || (argc % 2) == 0)
+    {
         printf("USAGE: %s pub_sub_so1 param1 pub_sub_so2 param2 ...\n", argv[0]);
         return 2;
     }
 
-    //* starting the pub and sub count to zero, using this as an index for inserting into our "arrays" below
+    //* starting the pub and sub count to zero,
+    //* using this as an index for inserting into our "arrays" below
     int pub_count = 0;
     int sub_count = 0;
 
     // we are allocating for the maximum possible, probably every
     // argument will not be both a pub and a sub
-    pub_init_t *pubs = malloc(sizeof(*pubs) * (argc/2));
-    sub_init_t *subs = malloc(sizeof(*subs) * (argc/2));
-    char **pubs_arg = malloc(sizeof(*pubs_arg) * (argc/2));
-    char **subs_arg = malloc(sizeof(*subs_arg) * (argc/2));
+    pub_init_t *pubs = malloc(sizeof(*pubs) * (argc / 2));
+    sub_init_t *subs = malloc(sizeof(*subs) * (argc / 2));
+    char **pubs_arg = malloc(sizeof(*pubs_arg) * (argc / 2));
+    char **subs_arg = malloc(sizeof(*subs_arg) * (argc / 2));
 
     // we load in all the libraries specified on the command line. the library may
     // have a publisher, subscriber, or both!
-    for (int i = 1; i < argc; i += 2) {
+    for (int i = 1; i < argc; i += 2)
+    {
         void *dh = dlopen(argv[i], RTLD_LAZY);
-        if (dh == NULL) {
+        if (dh == NULL)
+        {
             fprintf(stderr, "%s\n", dlerror());
             continue;
         }
         //* retrieving the pub_init or sub_init function from the simple files, if they have them.
         pub_init_t p = dlsym(dh, "pub_init");
         sub_init_t s = dlsym(dh, "sub_init");
-        if (p) {
-            pubs_arg[pub_count] = argv[i+1];    // storing the pub arguments into the pub argument "array"
-            pubs[pub_count++] = p;              // storing what we got from p (pub_init function) into pubs function array, then incrementing pubcount
-
+        if (p)
+        {
+            pubs_arg[pub_count] = argv[i + 1]; // storing the pub arguments into the pub argument "array"
+            pubs[pub_count++] = p;             // storing what we got from p (pub_init function) into pubs function array, then incrementing pubcount
         }
-        if (s) {
-            subs_arg[sub_count] = argv[i+1];    // storing the sub arguments into the sub argument "array"
-            subs[sub_count++] = s;              // storing what we got from s (sub_init function) into subs function array, then incrementing pubcount
+        if (s)
+        {
+            subs_arg[sub_count] = argv[i + 1]; // storing the sub arguments into the sub argument "array"
+            subs[sub_count++] = s;             // storing what we got from s (sub_init function) into subs function array, then incrementing pubcount
         }
     }
 
@@ -115,14 +162,43 @@ int main(int argc, char **argv)
     //* starting up all the pubs and then the subs
     //! inside the for loops, the pub_init and sub_init functions are being called
 
-    //? start up threads here with each of these being the start functions
-    for (int i = 0; i < pub_count; i++) {
-        pubs[i](pubs_arg[i], simple_publish);
-    }
+    // ------------ Publisher Threads ----------------
+    pthread_t publishers[pub_count];
 
-    for (int i = 0; i < sub_count; i++) {
-        current = head;
-        subs[i](subs_arg[i], simple_retrieve);
+    for (int i = 0; i < pub_count; i++)
+    {
+        // Instantiating publisher argument struct
+        pub_struct *arguments;
+        arguments->arg = pubs_arg[i];
+        arguments->publish = simple_publish;
+        arguments->init_function = (void *)pubs[i];
+
+        pthread_create(&publishers[i], NULL, start_pub_thread, &arguments);
+    }
+    // ------------------------------------------------
+
+    // ------------ Subscriber Threads ----------------
+    pthread_t subscribers[sub_count];
+
+    for (int i = 0; i < sub_count; i++)
+    {
+        // Instantiating subscriber argument struct
+        sub_struct *arguments;
+        arguments->arg = subs_arg[i];
+        arguments->retrieve = simple_retrieve;
+        arguments->init_function = (void *)subs[i];
+
+        pthread_create(&subscribers[i], NULL, start_sub_thread, &arguments);
+    }
+    // ------------------------------------------------
+
+    for (int i = 0; i < pub_count; i++)
+    {
+        pthread_join(publishers[i], NULL); //! the second parameter is used for a return, may want to use for end condition checking?
+    }
+    for (int i = 0; i < sub_count; i++)
+    {
+        pthread_join(subscribers[i], NULL);
     }
 
     return 0;
