@@ -54,26 +54,26 @@ typedef struct sub_arguments
 
 // Delegate method to create pub threads
 // @param args - a struct containing the arguments to the pub_init function
-void *start_pub_thread(pub_struct *args)
+void *start_pub_thread(void *args)
 {
     printf("Begin start_pub_thread\n");
 
     pub_struct *pubargs = args;
-    pub_init_t function = (pub_init_t)args->init_function;
+    pub_init_t function = (pub_init_t)pubargs->init_function;
 
-    function(args->arg, args->publish);
+    function(pubargs->arg, pubargs->publish);
 }
 
 // Delegate method to create sub threads;
 // @param args - a struct containing the arguments to the sub_init function
-void *start_sub_thread(sub_struct *args)
+void *start_sub_thread(void *args)
 {
     printf("Begin start_sub_thread\n");
 
     sub_struct *subargs = args;
-    sub_init_t function = (sub_init_t)args->init_function;
+    sub_init_t function = (sub_init_t)subargs->init_function;
 
-    function(args->arg, args->retrieve);
+    function(subargs->arg, subargs->retrieve);
 }
 
 // publish a purchase to all subscribers. we will make a copy of the strings
@@ -185,13 +185,14 @@ int main(int argc, char **argv)
 
     for (int i = 0; i < pub_count; i++)
     {
+        printf("GOT INTO PUB THREAD FOR LOOP\n");
         // Instantiating publisher argument struct
         pub_struct *pubarguments = malloc(sizeof(pub_struct));
         pubarguments->arg = pubs_arg[i];
         pubarguments->publish = simple_publish;
         pubarguments->init_function = (void *)pubs[i];
 
-        // void *start_pub_thread;
+        // void* start_pub_thread_ptr;
 
         pthread_create(&publishers[i], NULL, start_pub_thread, &pubarguments);
     }
@@ -203,13 +204,14 @@ int main(int argc, char **argv)
 
     for (int i = 0; i < sub_count; i++)
     {
+        printf("GOT INTO SUB THREAD FOR LOOP\n");
         // Instantiating subscriber argument struct
         sub_struct *subarguments = malloc(sizeof(sub_struct));
         subarguments->arg = subs_arg[i];
         subarguments->retrieve = simple_retrieve;
         subarguments->init_function = (void *)subs[i];
 
-        // void *start_sub_thread;
+        // void* start_sub_thread_ptr;
 
         pthread_create(&subscribers[i], NULL, start_sub_thread, &subarguments);
     }
