@@ -8,6 +8,11 @@
 
 #include "pubsub.h"
 
+int done = 0;
+
+pthread_cond_t cond;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 // each item will have an amount, place of purchase, and description.
 // the timestamp will be filled in by the pubsub engine when publish is called.
 // next is used to build a linked list
@@ -42,15 +47,20 @@ typedef struct pub_arguments
 {
     char *arg;
     publish_t publish;
-    void *init_function;
+    pub_init_t init_pub;
+    // void (*init_function)(struct pub_arguments);
 } pub_struct;
 
 typedef struct sub_arguments
 {
     char *arg;
     retrieve_t retrieve;
-    void *init_function;
+    sub_init_t init_sub;
+    // void (*init_function)(struct sub_arguments);
 } sub_struct;
+
+// pub_struct *pubarguments;
+// sub_struct *subarguments;
 
 // Delegate method to create pub threads
 // @param args - a struct containing the arguments to the pub_init function
@@ -58,10 +68,17 @@ void *start_pub_thread(void *args)
 {
     printf("Begin start_pub_thread\n");
 
-    pub_struct *pubargs = args;
-    pub_init_t function = (pub_init_t)pubargs->init_function;
+    // pub_struct *pubargs = malloc(sizeof(pub_struct));
+    // pubargs = args;
 
-    function(pubargs->arg, pubargs->publish);
+    pub_struct *pubargs = args;
+    char *new_arg = pubargs->arg;
+    pub_init_t init = pubargs->init_pub;
+    // pub_init_t function = (pub_init_t)(pubargs->init_function);
+
+    printf("RIGHT BEFORE function CALL");
+
+    init(pubargs->arg, pubargs->publish);
 }
 
 // Delegate method to create sub threads;
@@ -70,10 +87,17 @@ void *start_sub_thread(void *args)
 {
     printf("Begin start_sub_thread\n");
 
-    sub_struct *subargs = args;
-    sub_init_t function = (sub_init_t)subargs->init_function;
+    // sub_struct *subargs = malloc(sizeof(sub_struct));
 
-    function(subargs->arg, subargs->retrieve);
+    printf("AFTER SUB MALLOC");
+    // sub_struct *subargs = args;
+
+    sub_struct *subargs = args;
+    printf("sub arg:%s and sub function is ...", subargs->arg);
+    sub_init_t init = subargs->init_sub;
+    // sub_init_t function = (sub_init_t)(subargs->init_function);
+
+    init(subargs->arg, subargs->retrieve);
 }
 
 // publish a purchase to all subscribers. we will make a copy of the strings
@@ -88,6 +112,7 @@ void simple_publish(float amount, const char *place, const char *description)
     strcpy(i->description, description);
 
     // add to end end of the list
+    pthread_mutex_lock(&mutex);
     i->next = NULL;
     if (tail == NULL)
     {
@@ -98,6 +123,8 @@ void simple_publish(float amount, const char *place, const char *description)
         tail->next = i;
         tail = i;
     }
+    pthread_cond_signal(&cond);
+    pthread_mutex_unlock(&mutex);
 }
 
 struct item *current;
@@ -107,20 +134,34 @@ struct item *current;
 void simple_retrieve(int64_t *timestamp_ms, float *amount, char *place, char *description)
 {
     printf("Begin simple_retrieve\n");
+    pthread_mutex_lock(&mutex);
     if (current == NULL)
     {
         *timestamp_ms = -1;
         return;
     }
-    *timestamp_ms = current->timestamp_ms;
-    *amount = current->amount;
-    strcpy(place, current->place);
-    strcpy(description, current->description);
-    current = current->next;
+
+    if(!done || current != NULL){
+        *timestamp_ms = current->timestamp_ms;
+        *amount = current->amount;
+        strcpy(place, current->place);
+        strcpy(description, current->description);
+        current = current->next;
+    }
+    else{
+        pthread_cond_wait(&cond, &mutex);
+    }
+    
+    
+
+    pthread_mutex_unlock(&mutex);
 }
 
 int main(int argc, char **argv)
 {
+
+    pthread_cond_init(&cond, NULL);
+
     printf("START MAIN\n");
 
     if (argc < 2 || (argc % 2) == 0)
@@ -190,7 +231,7 @@ int main(int argc, char **argv)
         pub_struct *pubarguments = malloc(sizeof(pub_struct));
         pubarguments->arg = pubs_arg[i];
         pubarguments->publish = simple_publish;
-        pubarguments->init_function = (void *)pubs[i];
+        pubarguments->init_pub = pubs[i];
 
         // void* start_pub_thread_ptr;
 
@@ -209,7 +250,7 @@ int main(int argc, char **argv)
         sub_struct *subarguments = malloc(sizeof(sub_struct));
         subarguments->arg = subs_arg[i];
         subarguments->retrieve = simple_retrieve;
-        subarguments->init_function = (void *)subs[i];
+        subarguments->init_sub = subs[i];
 
         // void* start_sub_thread_ptr;
 
@@ -222,15 +263,21 @@ int main(int argc, char **argv)
     for (int i = 0; i < pub_count; i++)
     {
         printf("GOT INTO PUB JOIN\n");
-        // pthread_join(publishers[i], NULL); //! the second parameter is used for a return, may want to use for end condition checking?
+        pthread_join(publishers[i], NULL); //! the second parameter is used for a return, may want to use for end condition checking?
     }
+
+
+    printf("AFTER JOIN\n");
+
+    pthread_mutex_lock(&mutex);
+    done=1;
+    pthread_cond_signal(&cond);
+    pthread_mutex_unlock(&mutex);
     for (int i = 0; i < sub_count; i++)
     {
         printf("GOT INTO SUB JOIN\n");
-        // pthread_join(subscribers[i], NULL);
+        pthread_join(subscribers[i], NULL);
     }
-
-    printf("AFTER JOIN\n");
 
     return 0;
 }
