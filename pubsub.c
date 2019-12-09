@@ -17,6 +17,10 @@ struct item {
     struct item *next;
 };
 
+
+//Todo: Make a global list and store the heads of each subscriber list
+
+
 // this is a simple implementation of a linked list.
 // we don't need to worry about thread safety because this simple implementation 
 // is single threaded
@@ -73,6 +77,8 @@ int main(int argc, char **argv)
         printf("USAGE: %s pub_sub_so1 param1 pub_sub_so2 param2 ...\n", argv[0]);
         return 2;
     }
+
+    //* starting the pub and sub count to zero, using this as an index for inserting into our "arrays" below
     int pub_count = 0;
     int sub_count = 0;
 
@@ -91,20 +97,25 @@ int main(int argc, char **argv)
             fprintf(stderr, "%s\n", dlerror());
             continue;
         }
+        //* retrieving the pub_init or sub_init function from the simple files, if they have them.
         pub_init_t p = dlsym(dh, "pub_init");
         sub_init_t s = dlsym(dh, "sub_init");
         if (p) {
-            pubs_arg[pub_count] = argv[i+1];
-            pubs[pub_count++] = p;
+            pubs_arg[pub_count] = argv[i+1];    // storing the pub arguments into the pub argument "array"
+            pubs[pub_count++] = p;              // storing what we got from p (pub_init function) into pubs function array, then incrementing pubcount
 
         }
         if (s) {
-            subs_arg[sub_count] = argv[i+1];
-            subs[sub_count++] = s;
+            subs_arg[sub_count] = argv[i+1];    // storing the sub arguments into the sub argument "array"
+            subs[sub_count++] = s;              // storing what we got from s (sub_init function) into subs function array, then incrementing pubcount
         }
     }
 
     // do all the pubs first (this might fail if the pubs are also subs...)
+    //* starting up all the pubs and then the subs
+    //! inside the for loops, the pub_init and sub_init functions are being called
+
+    //? start up threads here with each of these being the start functions
     for (int i = 0; i < pub_count; i++) {
         pubs[i](pubs_arg[i], simple_publish);
     }

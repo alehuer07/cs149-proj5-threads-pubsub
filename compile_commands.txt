@@ -1,0 +1,7 @@
+cc -g -std=gnu11 pubsub.c -o pubsub -ldl
+
+cc -g -std=c11 -shared -fPIC -o simple.so simple.c
+cc -g -std=c11 -shared -fPIC -o simple_pub.so simple_pub.c
+cc -g -std=c11 -shared -fPIC -o simple_sub.so simple_sub.c
+
+./pubsub ./simple.so na ./simple_pub.so 4 ./simple_sub.so na ./simple_pub.so 1 
